@@ -1,0 +1,91 @@
+%Code to calculate the Inverse Kinematics (IK)
+%of the Yaskawa HC20SDTP robot for ENGR407
+
+clear all
+close all
+
+%Defined end effector position (m)
+x = 0.68;
+y = 0.3;
+y_deg = -4; %end effector points down 4 degrees means rotation around Y
+
+%calcuate the angle of the first joint in radians
+theta1 = atan2(y,x);
+%convert from radians to degrees
+theta_deg1 = rad2deg(theta1);
+fprintf('Theta 1 (deg) = %.2f\n', theta_deg1);
+
+
+%Calcualte the angle of the third joint in radians
+%define parameters
+w_z = 1.181; %length from base to 3rd joint (m)
+d = 0.226; %distance from 1st to 2nd joint (m)
+a_2 =0.733; %distance from 2nd to 3rd joint
+a_3 = 0.394; %distance from 3rd to 4th joint
+r = sqrt(x^2 + y^2); 
+s = w_z-d;
+
+%calculate the angle - issue is that this gives off an imaginary number
+%so the value needs "clamping" before putting it into acos
+T3 = (r^2 + s^2 - a_2^2 -a_3^2)/(2*a_2*a_3);
+T3 = max(min(T3,1),-1); %needs to be in this range
+theta3 = acos(T3);
+%convert from radians to degrees
+theta_deg3=rad2deg(theta3);
+
+
+%calculate the angle of the second joint in radians
+%Same as theta 3, it gives off an imaginary number, so the same process 
+%needs to happen
+T2 = ( (a_2 + a_3*cos(theta3))*s - a_3*sin(theta3)*r )/ (r^2 + s^2);
+T2 = max(min(T2,1),-1);
+theta2=asin(T2);
+
+%convert from radians to degrees
+theta_deg2=rad2deg(theta2);
+fprintf('Theta 2 (deg) = %.2f\n', theta_deg2);
+fprintf('Theta 3 (deg) = %.2f\n', theta_deg3);
+
+%Calculate the angles of joints 4, 5, & 6
+%Need to define the rotational matrices to find the angles of these joints
+
+%Desired ratational matrix for the end effector -> R_d = R_0^6
+R_d = [cos(y_deg)  0 sin(y_deg);
+           0       1     0;
+       -sin(y_deg) 0 cos(y_deg)];
+
+%Define extra parameters
+c1 = cos(theta_deg1); s1 = sin(theta_deg1);
+c23 = cos(theta_deg2+theta_deg3);
+s23 = sin(theta_deg2+theta_deg3);
+
+%Define matrix
+R03 = [c1.*c23  -c1.*s23  s1;
+       s1.*c23  -s1.*s23  -c1;
+       s23       s23       0];
+
+%Calculate write rotation
+R36 = R03 .* R_d;
+
+%theta5
+theta5 = atan2( sqrt(1 - R36(3,3)^2), R36(3,3) );
+% alternative wrist-down solution if the answer to theta5 is unfesable 
+% theta5 = atan2(-sqrt(1 - R36(3,3)^2), R36(3,3));
+
+% theta4
+theta4 = atan2( R36(2,3), R36(1,3) );
+
+% theta6
+aa = real(R36(3,2));
+bb = real(R36(3,1));
+theta6 = atan2(aa, -bb);
+
+
+%Convert rads to degrees
+theta_deg4 = rad2deg(theta4);
+theta_deg5 = rad2deg(theta5);
+theta_deg6 = rad2deg(theta6);
+
+fprintf('Theta 4 (deg) = %.2f\n', theta_deg4);
+fprintf('Theta 5 (deg) = %.2f\n', theta_deg5);
+fprintf('Theta 6 (deg) = %.2f\n', theta_deg6);
