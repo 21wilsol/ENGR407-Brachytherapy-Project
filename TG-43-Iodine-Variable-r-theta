@@ -1,0 +1,166 @@
+import math
+import pandas as pd
+from tabulate import tabulate
+import numpy as np
+from mpl_toolkits import mplot3d
+import matplotlib.pyplot as plt
+
+pd.set_option('display.max_columns', None)  # show all columns
+pd.set_option('display.max_rows', None)     # show all rows
+pd.set_option('display.width', 0)           # auto-detect width
+
+
+name = "Iodine-125"
+r_start = 0.005 # Initial r value
+r_loops = 200
+theta_start=1#Inital theta value
+
+
+for j in range(1,9):#Loops for 10-90 theta
+    theta = theta_start * j*10
+    print(theta)
+    r_values = []
+    dosage_values = []
+    for i in range(1,r_loops):
+        r = r_start*i
+        r=round(r,1)
+                             
+
+
+        ##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        ##Excel Sheet with Materaial Parameters adds them into python
+
+        file_name =  "file:/Users/alexw/Documents/University/Year 4/ENGR407/Code/SourceTGParams/Iodine_125_Params.xlsx"
+
+        Sheet_2DAF     = "2D Anistropy Function"
+        Sheet_RDF      = "Radial Dose Function"
+
+        Table2DAF = pd.read_excel(file_name, sheet_name=Sheet_2DAF)
+        first_header = Table2DAF.columns[0]
+        headers = [float(col) for col in Table2DAF.columns[1:]]
+        formatted_headers = [f"{float(h):.1f}" if float(h).is_integer() else str(h) for h in headers]#Formats data to be correct format
+        new_headers = [first_header] + formatted_headers
+        Table2DAF.columns = new_headers
+        TableRDF = pd.read_excel(file_name, sheet_name=Sheet_RDF)
+
+
+
+        ##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        ##Interpolation for RDF
+        diffs = (TableRDF["r (cm)"] - r).abs()
+        index_a = diffs.sort_values().index[0]#Finds closest value
+        if TableRDF.loc[index_a,"r (cm)"] != r : #Decides if linear interpolation is needed
+            index_b = diffs.sort_values().index[1] # Finds next closest value
+            r_a=TableRDF.loc[index_a,"r (cm)"]
+            gl_a=TableRDF.loc[index_a,"gL(r)"]
+            r_b=TableRDF.loc[index_b,"r (cm)"]
+            gl_b=TableRDF.loc[index_b,"gL(r)"]
+
+            gradiant=((gl_b-gl_a)/(r_b-r_a))  #linear interpolations 
+            gl_r=(gradiant*(r-r_a))+gl_a
+       
+        else:
+            gl_r=TableRDF.loc[index_a,"gL(r)"]
+
+        ##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        ##Interpolation for 2DAF
+
+        if r not in headers:#Decides if interpolation for r is needed
+        
+            headers.append(r)#Adds r to list
+            headers.sort()#sorts list
+            index_r = headers.index(r)#finds r in list
+            if index_r == 0:# if it is in position 0 in list
+                #Not_in_range = True
+                index_r_above = headers[index_r + 1]
+                Table2DAF[str(r)]=Table2DAF[str(index_r_above)]#Uses index above
+                r=str(r)
+                
+            else:
+                index_r_below = float(headers[index_r - 1])#Finds index below r if r is not in position 0
+                index_r_above = float(headers[index_r + 1])#Finds index above r if r is not in position 0
+
+                    
+                    
+                
+                Table2DAF[r] =(Table2DAF[str(index_r_above)]-Table2DAF[str(index_r_below)])*(r-index_r_below)/(index_r_above-index_r_below)+Table2DAF[str(index_r_below)]#Interpolation
+                #print(Table2DAF)
+        else:
+            r=str(r)
+
+    
+
+        diffs = (Table2DAF["q / deg"] - theta).abs()
+        index_a = diffs.sort_values().index[0]#Finds closest value
+        if Table2DAF.loc[index_a,"q / deg"] != theta :#Decides if linear interpolation is needed
+            index_b = diffs.sort_values().index[1]# Finds next closest value
+            r_a=Table2DAF.loc[index_a,r]
+            theta_a=Table2DAF.loc[index_a,"q / deg"]
+            r_b=Table2DAF.loc[index_b,r]
+            theta_b=Table2DAF.loc[index_b,"q / deg"]
+
+            gradiant=((r_b-r_a)/(theta_b-theta_a))  #linear interpolation
+            Anistropy_Function=(gradiant*(theta-theta_a))+r_a
+            Anistropy_Function=round(Anistropy_Function,2)
+
+
+            
+        else:
+            Anistropy_Function=Table2DAF.loc[index_a,r]
+
+
+        ##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        r=float(r)
+        Air_Kerma_rate = 1.27 #Depends on Source in micro Gym2/h/mCi
+        Activity = 0.5 #in mCi between 0.197 and 0.926 mCi for Ecker's
+        Air_Kerma_Strength=Air_Kerma_rate * Activity
+
+        Iodine_125= pd.Series([0.34,Air_Kerma_Strength,0.965,gl_r,Anistropy_Function])#Values of needed data for Iodine
+
+
+        TableConstants=pd.DataFrame({name:Iodine_125})
+        TableConstants.index = (["Length Of Source(cm)","Air-Kerma Strength (U)" ,  "Dose Rate Constant (cGy/h/U)" , "Radial Dose Function" , "2D Anistropy Function"])#Adds labels to table
+
+        ##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        #Line_Source Trigonometry Maths to find both Line Source Values
+
+
+        theta_radians=math.radians(theta)
+        Height_of_Source = math.sin(theta_radians)*r
+        Length_away_from_seed = (math.cos(theta_radians)*r)-0.5*TableConstants.loc["Length Of Source(cm)",name]
+        Angle_1=math.atan(Length_away_from_seed/Height_of_Source)
+        Angle_2=math.atan(Height_of_Source/(TableConstants.loc["Length Of Source(cm)",name]+Length_away_from_seed))
+
+        Angle_1 = math.degrees(Angle_1)
+        Angle_2 = math.degrees(Angle_2)
+        Beta=(90-Angle_1-Angle_2)
+
+
+        Beta_zero = 2*math.atan((TableConstants.loc["Length Of Source(cm)",name])/(2*1))
+        Line_Source=math.radians(Beta)/((TableConstants.loc["Length Of Source(cm)",name])*r*math.sin(theta_radians))
+        Line_Source_Zero=(Beta_zero)/((TableConstants.loc["Length Of Source(cm)",name])*1)
+
+
+        #Final Equation-----------------------------------------------------------------------
+        Dosage=(TableConstants.loc["Air-Kerma Strength (U)",name])*(TableConstants.loc["Dose Rate Constant (cGy/h/U)", name])*(Line_Source/Line_Source_Zero)*(TableConstants.loc["Radial Dose Function",name])*(TableConstants.loc["2D Anistropy Function",name])
+
+        
+        Dosage = Dosage/(TableConstants.loc["Air-Kerma Strength (U)",name])
+        
+        
+        r_values.append(r)# Adds r to data set
+        dosage_values.append(Dosage)#Adds dosage to data set in same postion as r
+        
+    
+    plt.plot(r_values, dosage_values, label=f"Theta = {theta}")#Plots data calculated for theta
+
+    
+#Graph settings    
+plt.xlim(0,(r_start*r_loops))
+#plt.yscale("log") #Option of Log Plot
+plt.title(f"Calculations of TG-43 Equation using variable distance for {name}")
+plt.ylabel(f"The dosage of {name} in cGy/h/U")
+plt.xlabel("Varying Distance in cm")
+plt.grid(True)
+plt.legend()    
+plt.show()
