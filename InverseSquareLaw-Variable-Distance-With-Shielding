@@ -1,0 +1,262 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from tabulate import tabulate ## Making Tables more readable
+import math
+
+pd.set_option('display.max_columns', None)  # show all columns
+pd.set_option('display.max_rows', None)     # show all rows
+pd.set_option('display.width', 0)           # auto-detect width
+
+print("\n")
+print("\n")
+
+#------------------------------------------------------------------------------------------------------------
+
+# Constants
+
+Volume = 2.2619e-3 #cm3
+
+Distance = 0.3  # What total distance
+Distance_Series = pd.Series(np.arange(0.00,(Distance+(Distance/100)),(Distance/100))) # Variable
+TableDistance =pd.DataFrame({"Distance":Distance_Series})
+
+
+#Shielding Material Selection ------------------------------------------------------------------------------------------------------------
+#BlockerName = "Lead"
+#BlockerDensity = 11.34 #g/cm3
+
+#BlockerName = "Iron"
+#BlockerDensity = 7.874 #g/cm3
+
+BlockerName = "Tungsten"
+BlockerDensity = 19.250 #g/cm3
+
+#BlockerName = "Copper"
+#BlockerDensity = 8.96 #g/cm3
+
+#BlockerName = "Water"
+#BlockerDensity = 1 #g/cm3
+
+#BlockerName = "Concrete"  ##https://physics.nist.gov/cgi-bin/Star/compos.pl?matno=144
+#BlockerDensity = 2.35 #g/cm3
+
+#------------------------------------------------------------------------------------------------------------
+
+
+#Shielding Parameters
+Thickness_Of_Blocker = 0.05 # meters
+Position_Of_Blocker  = 0.15
+
+left_side_blocker = Position_Of_Blocker - (0.5 * Thickness_Of_Blocker) #Finds position of blocker edges
+right_side_blocker = Position_Of_Blocker + (0.5 * Thickness_Of_Blocker)
+
+
+
+
+#Constant Data table
+##                       Name                 Energy-30cm    Activity-Mbq/g    Density     Alpha-keV     Beta-keV    Gamma-keV     Electrons-keV 
+Iodine_125_C = pd.Series(["Iodine-125",       3.9e-4,        6.45e8,           4.93,         0,             0,         36,            31])
+Radium_226_C = pd.Series(["Radium-226",       7.6e-5,        3.66e4,           5.5,       4784,             0,        186,           168])
+Strontium_90_C= pd.Series(["Strontium-90",    2.04e-1,       5.21e6,           2.64,         0,          2284,          0,             0])
+Palladium_103_C= pd.Series(["Palladium-103",  2.4e-4,        2.76e9,           12.023,       0,             0,         23,            17])
+Cobalt_60_C= pd.Series(["Cobalt-60",          1.646e-2,      4.18e7,           8.9,          0,          1491,       1330,             0])
+
+
+
+TableConstants=pd.DataFrame({"Iodine-125":Iodine_125_C,"Radium-226":Radium_226_C,"Strontium-90":Strontium_90_C,"Palladium-103":Palladium_103_C,"Cobalt-60":Cobalt_60_C})# Adds series to table
+TableConstants.index = (["Isotope Name","Energy over area at 30cm D mSv/h","Activity MBq/g","Density g/cm3", "Maximum Alpha-keV","Maximum Beta-keV","Maximum Gamma-keV","Maximum Electrons-keV"])# Adds labels to table
+print(tabulate(TableConstants, headers='keys', tablefmt='grid'))#prints table with good design
+
+
+
+print("\n")
+print("\n")
+print("Calculated Results")
+print("\n")
+
+TableVary=pd.DataFrame({})
+
+
+def Variables(name):#Function that creates a table of calculated data
+    Mass = (TableConstants.loc["Density g/cm3",name]*Volume)
+    Total_Activity = TableConstants.loc["Activity MBq/g",name]* Mass
+    Energy_Point_Source_Massless =(TableConstants.loc["Energy over area at 30cm D mSv/h",name])* (0.3**2)
+    Energy_Point_Source = Energy_Point_Source_Massless * Total_Activity
+    External_Exposure = (Energy_Point_Source / (Distance**2))/1000
+    TableVary[name] = pd.Series({"Isotope name":name,
+                                 "Mass":Mass,
+                                 "Total Activity":Total_Activity,
+                                 "Energy at Point Source":Energy_Point_Source,
+                                 "External Exposure":External_Exposure})
+    TableDistance[name + " Sv/h"] = (
+        (Energy_Point_Source / (Distance_Series**2)) / 1000)
+        
+    return
+
+
+name = "Iodine-125"# Conduncts function for each Isotope
+Variables(name)
+
+
+name = "Radium-226"
+Variables(name)
+
+
+
+name = "Strontium-90"
+Variables(name)
+
+
+name = "Palladium-103"
+Variables(name)
+
+
+
+name = "Cobalt-60"
+Variables(name)
+
+print(tabulate(TableVary, headers='keys', tablefmt='simple_grid'))
+
+print("\n")
+print("\n")
+print("External Exposure Given Varying Distance in Sv/h")
+print("\n")
+
+print(tabulate(TableDistance, headers='keys', tablefmt='simple_grid',numalign="center"))
+
+
+
+
+Displayed_Isotopes = [col for col in TableDistance.columns if col != 'Distance']
+
+
+for col in Displayed_Isotopes:
+    label = col.replace("External Exposure ", "").replace(" Sv/h", "")
+    
+    # Filter the DataFrame to only include rows where Distance <= left_side_blocker
+    filtered_data = TableDistance[TableDistance["Distance"] <= left_side_blocker]
+    
+
+    plt.plot(filtered_data["Distance"], filtered_data[col], label=label)
+
+
+#Plots Shielding material location onto graph for viewing
+z=pd.Series(np.arange((Position_Of_Blocker-(0.5*Thickness_Of_Blocker)),(Position_Of_Blocker+(0.5*Thickness_Of_Blocker)),0.001))
+
+plt.vlines((left_side_blocker), 0, 10000000, colors=None, linestyles='solid',linewidth=3.0)#Vertical line plot
+plt.vlines((right_side_blocker), 0, 10000000, colors=None, linestyles='solid',linewidth=3.0)
+
+
+plt.hlines(10000000, (left_side_blocker), (right_side_blocker), colors=None, linestyles='solid',linewidth=3.0)#Horizontal Line plot
+plt.hlines(0, (left_side_blocker), (right_side_blocker), colors=None, linestyles='solid',linewidth=3.0)
+
+
+
+
+
+
+file_name =  "file:/Users/alexw/Documents/University/Year 4/ENGR407/Code/Blockers/BlockerMaterials.xlsx" # Location of excel file with materails definitions
+sheet =  BlockerName
+
+TableBlocker = pd.read_excel(file_name, sheet_name=sheet) # Adds data from excel into python table
+print(tabulate(TableBlocker, headers='keys', tablefmt='simple_grid',numalign="center"))
+
+TableDistanceBlocker=pd.DataFrame({})
+
+
+def indexing(name):#Linear interpolation and material parameters for Beer-Lambert Law
+    closest_index = (TableBlocker["Energy - MeV"] - (TableConstants.loc["Maximum Gamma-keV",name])/1000).abs().idxmin()
+    Mass_attenuation = TableBlocker.loc[closest_index,"Total Attenuation With Coherent Scattering cm2/g"]
+    Linear_attenuation = Mass_attenuation*BlockerDensity
+    Percentage_Output = (math.e**(-Linear_attenuation*Thickness_Of_Blocker))*100
+    left_side_blocker = Position_Of_Blocker - (0.5 * Thickness_Of_Blocker)
+    closest_index = (TableDistance["Distance"] - left_side_blocker).abs().idxmin()
+    Input_Energy_Into_Blocker = TableDistance.loc[closest_index,(name +" Sv/h")]
+    Output_Energy_From_Blocker = (Input_Energy_Into_Blocker*(Percentage_Output)/100)
+    TableDistanceBlocker[name] = pd.Series({"Isotope name":name,
+                                     "Mass_attenuation":Mass_attenuation,
+                                     "Linear Attenuation":Linear_attenuation,
+                                     "Percentage Output":Percentage_Output,
+                                     "Input Energy Into Blocker":Input_Energy_Into_Blocker,
+                                     "Output Energy From Blocker":Output_Energy_From_Blocker})
+ 
+    return
+
+
+
+name = "Iodine-125"
+indexing(name)
+
+name = "Radium-226"
+indexing(name)
+
+name = "Strontium-90"
+indexing(name)
+
+name = "Palladium-103"
+indexing(name)
+
+name = "Cobalt-60"
+indexing(name)
+                                     
+print(tabulate(TableDistanceBlocker, headers='keys', tablefmt='simple_grid',numalign="center"))
+
+Distance_Series_AB = pd.Series(np.arange(right_side_blocker,(Distance+(Distance/100)),(Distance/100)))
+TableDistanceAB=pd.DataFrame({"Distance":Distance_Series_AB})
+print(TableDistanceAB)
+
+def AfterBlocker(name):#Decides if to plot energy after, if below 0.0001 it doesn't
+    if TableDistanceBlocker.loc["Output Energy From Blocker",name] <= 0.0001:
+        TableDistanceAB[name + " Sv/h"] = 0
+        
+    else:#Adds data to new data frame for after blocker values
+        Energy_Point_Source = TableDistanceBlocker.loc["Output Energy From Blocker",name]
+        Energy=(((Energy_Point_Source) / ((Distance_Series_AB)**2)) / 1000)
+        Energy = Energy-(Energy-TableDistanceBlocker.loc["Output Energy From Blocker",name])
+        TableDistanceAB[name + " Sv/h"] = (Energy)
+            
+
+name = "Iodine-125"
+AfterBlocker(name)
+
+name = "Radium-226"
+AfterBlocker(name)
+
+name = "Strontium-90"
+AfterBlocker(name)
+
+name = "Palladium-103"
+AfterBlocker(name)
+
+name = "Cobalt-60"
+AfterBlocker(name)
+
+
+print(TableDistanceAB)
+
+
+
+filtered_data = TableDistanceAB[TableDistanceAB["Distance"] > right_side_blocker]
+
+Displayed_Isotopes = [col for col in TableDistanceAB.columns if col != 'Distance']# Removes Distance column from data for plotting
+
+
+for col in Displayed_Isotopes:# Plots needed columns onto graph
+    label = col.replace("External Exposure ", "").replace(" Sv/h", "After Blocker")
+    plt.plot(filtered_data["Distance"], filtered_data[col], label=label)
+
+
+
+#Graph Settings
+plt.title("External Exposure Given Varying Distance in Sv/h with added Shielding Material of "+ BlockerName)
+plt.yscale("log")
+plt.ylabel("External Exposure in Sv/h")
+plt.xlabel("Varying Distance in Meters")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+
+
+
