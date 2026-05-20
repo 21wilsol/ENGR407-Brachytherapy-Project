@@ -1,0 +1,160 @@
+import math
+import pandas as pd
+from tabulate import tabulate
+import numpy as np
+
+pd.set_option('display.max_columns', None)  # show all columns
+pd.set_option('display.max_rows', None)     # show all rows
+pd.set_option('display.width', 0)           # auto-detect width
+
+
+
+##Constants
+name = "Iodine-125"
+r = 2                   #r distance from point to seed in cm
+theta =  40                 #theta angle at that point     
+
+
+##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+##Excel Sheet with Materaial Parameters
+
+file_name =  "file:/Users/alexw/Documents/University/Year 4/ENGR407/Code/SourceTGParams/Iodine_125_Params.xlsx"
+
+Sheet_2DAF     = "2D Anistropy Function"
+Sheet_RDF      = "Radial Dose Function"
+
+Table2DAF = pd.read_excel(file_name, sheet_name=Sheet_2DAF)
+#print(tabulate(Table2DAF, headers='keys', tablefmt='simple_grid',numalign="center"))
+
+TableRDF = pd.read_excel(file_name, sheet_name=Sheet_RDF)
+#print(tabulate(TableRDF, headers='keys', tablefmt='simple_grid',numalign="center"))
+
+
+##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+##Interpolation for RDF
+diffs = (TableRDF["r (cm)"] - r).abs()
+index_a = diffs.sort_values().index[0]
+if TableRDF.loc[index_a,"r (cm)"] != r :
+    index_b = diffs.sort_values().index[1]
+    print("Closest index to r="+str(r)+ " is "+ str(index_a))
+    print("2nd Closest index to r="+str(r)+ " is "+ str(index_b))
+    r_a=TableRDF.loc[index_a,"r (cm)"]
+    gl_a=TableRDF.loc[index_a,"gL(r)"]
+    r_b=TableRDF.loc[index_b,"r (cm)"]
+    gl_b=TableRDF.loc[index_b,"gL(r)"]
+
+    gradiant=((gl_b-gl_a)/(r_b-r_a))  #linear inter
+    gl_r=(gradiant*(r-r_a))+gl_a
+    print("New interpolated value of the Radial Dose Function at r="+str(r)+ " is "+str(gl_r))
+
+
+    
+else:
+    print("No interpolation needed")
+    gl_r=TableRDF.loc[index_a,"gL(r)"]
+    print("Interpolated value of the Radial Dose Function at r="+str(r)+ " is "+str(gl_r))
+
+
+
+print("\n")
+print("\n")
+##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+##Interpolation for 2DAF
+headers = [float(col) for col in Table2DAF.columns[1:]]
+#print(headers)
+
+if r not in headers:
+    for i in range(200):
+        r_temp=r+(0.01*i)
+        r=round(r,2)
+        #print(str(r_temp))
+        if r_temp in headers:
+            r=r_temp
+            break
+        r_temp=r-(0.01*i)
+        r=round(r,2)
+        #print(str(r_temp))
+        if r_temp in headers:
+            r=r_temp
+            break      
+
+print("Interpolated Value of r for theta measurement is : " + str(r))
+diffs = (Table2DAF["q / deg"] - theta).abs()
+index_a = diffs.sort_values().index[0]
+#print(index_a)
+if Table2DAF.loc[index_a,"q / deg"] != theta :
+    index_b = diffs.sort_values().index[1]
+    print("Closest index to theta="+str(theta)+ " is "+ str(index_a))
+    print("2nd Closest index to theta="+str(theta)+ " is "+ str(index_b))
+    r_a=Table2DAF.loc[index_a,r]
+    theta_a=Table2DAF.loc[index_a,"q / deg"]
+    r_b=Table2DAF.loc[index_b,r]
+    theta_b=Table2DAF.loc[index_b,"q / deg"]
+
+    gradiant=((r_b-r_a)/(theta_b-theta_a))  #linear inter
+    Anistropy_Function=(gradiant*(theta-theta_a))+r_a
+    Anistropy_Function=round(Anistropy_Function,2)
+    print("New interpolated value at r="+str(r)+ " and theta="+str(theta) +"is "+str(Anistropy_Function))
+
+
+    
+else:
+    print("No interpolation needed")
+    Anistropy_Function=Table2DAF.loc[index_a,r]
+    print("Interpolated value at r="+str(r)+ " is "+str(Anistropy_Function))
+
+
+##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+## Names               Length of Source Air_Kerma_Strength  Dose_Rate_Constant  Radial_Dose_Function  2D_Anistropy_Function
+
+Air_Kerma_rate = 1.27 #Depends on Source in micro Gym2/h/mCi
+Activity = 0.5 #in mCi between 0.197 and 0.926 mCi for Ecker's
+Air_Kerma_Strength=Air_Kerma_rate * Activity
+#print(Air_Kerma_Strength)
+
+Iodine_125= pd.Series([0.34,Air_Kerma_Strength,0.965,gl_r,Anistropy_Function])
+
+
+TableConstants=pd.DataFrame({name:Iodine_125})
+TableConstants.index = (["Length Of Source(cm)","Air-Kerma Strength (U)" ,  "Dose Rate Constant (cGy/h/U)" , "Radial Dose Function" , "2D Anistropy Function"])
+print(tabulate(TableConstants, headers='keys', tablefmt='grid'))
+
+##-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#Line_Source
+
+
+theta_radians=math.radians(theta)
+#print(theta_radians)
+Height_of_Source = math.sin(theta_radians)*r
+#print(Height_of_Source)
+Length_away_from_seed = (math.cos(theta_radians)*r)-0.5*TableConstants.loc["Length Of Source(cm)",name]
+#print(Length_away_from_seed)
+Angle_1=math.atan(Length_away_from_seed/Height_of_Source)
+Angle_2=math.atan(Height_of_Source/(TableConstants.loc["Length Of Source(cm)",name]+Length_away_from_seed))
+
+Angle_1 = math.degrees(Angle_1)
+#print(Angle_1)
+Angle_2 = math.degrees(Angle_2)
+#print(Angle_2)
+Beta=(90-Angle_1-Angle_2)
+print(math.radians(Beta))
+
+
+Beta_zero = 2*math.atan((TableConstants.loc["Length Of Source(cm)",name])/(2*1))
+print(Beta_zero)
+
+
+Line_Source=math.radians(Beta)/((TableConstants.loc["Length Of Source(cm)",name])*r*math.sin(theta_radians))
+print(Line_Source)
+
+Line_Source_Zero=(Beta_zero)/((TableConstants.loc["Length Of Source(cm)",name])*1)
+print(Line_Source_Zero)
+
+
+#Final Equation
+Dosage=(TableConstants.loc["Air-Kerma Strength (U)",name])*(TableConstants.loc["Dose Rate Constant (cGy/h/U)", name])*(Line_Source/Line_Source_Zero)*(TableConstants.loc["Radial Dose Function",name])*(TableConstants.loc["2D Anistropy Function",name])
+
+print(f"The dosage of {name} is {Dosage:.3f} cGy/h")
+Dosage = Dosage/(TableConstants.loc["Air-Kerma Strength (U)",name])
+print(f"The dosage of {name} is {Dosage:.3f} cGy/h/U")
+
