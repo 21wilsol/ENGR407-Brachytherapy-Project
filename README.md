@@ -16,3 +16,5 @@ MACHINE VISION: Contains all files used for programming the NVIDIA Jetson PC and
 CONTROL SYSTEM: Contains all files used to program an Arduino Uno to control a NEMA14 stepper motor for end effector movement. 
                 Includes closed-loop feedback from a HX711 load cell amplifier for a 5kg load cell and HC-SR04 ultrasonic sensor to determine 
                 insertion force and depth, respectively.
+
+FORWARD KINEMATICS: Contains MATLAB code to determine the position of the end effector of the Yaskawa Cobot HC20SDTP robotic arm.
