@@ -1,0 +1,257 @@
+from IPython.display import Image
+import numpy as np
+import os
+import subprocess
+import sys
+import matplotlib.pyplot as plt
+import pandas as pd
+from matplotlib.image import imread
+from matplotlib.colors import LogNorm
+
+
+## Run Command - cd C:\openmc-uni
+## Run Command - python OpenMC-Iodine-Dosimetry.py
+Plot_Dimension = 10 # plus and mins in cm
+
+
+## ---------------Gets CMD to open and run from Idle and also run Docker-------------------------------------
+def inside_docker() -> bool:
+    return os.path.exists("/.dockerenv")
+
+if not inside_docker():
+    print(" Launching OpenMC in Docker...")
+
+    current_dir = os.getcwd().replace("\\", "/")
+    script_name = os.path.basename(__file__)
+
+    cmd = [
+        "docker", "run", "-it", "--rm",
+        "-v", f"{current_dir}:/mnt",
+        "-w", "/mnt",
+        "openmc/openmc",
+        "python3", f"/mnt/{script_name}"
+    ]
+
+    subprocess.run(cmd, check=True)
+    input("\n Docker run finished. Press Enter to close this window...")
+    sys.exit(0)
+
+
+import openmc
+
+
+## -------------------Add Emissions--------------------------------------------------------------------------------
+##Variables for Source
+energies = [27000, 31000, 36000]  # eV
+intensities = [0.764, 0.174, 0.047]  #From data sheet divided by Sum
+Length = 0.34#cm
+Activity = 0.5 #in mCi between 0.197 and 0.926 mCi for Ecker's
+Emissions_per_decay = 1.14+0.26+0.07 #Delacroix handbook data
+Air_Kerma_rate = 1.27 #Depends on Source in micro Gym2/h/mCi
+
+
+radius_dist = openmc.stats.Uniform(0.0, 0.0345)      # radius(cm)
+phi_dist = openmc.stats.Uniform(0.0, 2* 3.14159)     # Sources all the way round the circle
+Length_dist = openmc.stats.Uniform(-Length/2, Length/2)     # length (cm)
+
+cyl_space = openmc.stats.CylindricalIndependent(r=radius_dist, phi=phi_dist, z=Length_dist, origin=(0,0,0))
+
+
+source = openmc.IndependentSource(space=cyl_space)# set volume for source to emit from
+source.angle = openmc.stats.Isotropic() #Emits in all directions
+source.energy = openmc.stats.Discrete(energies, intensities) # Set energies for source
+source.particle = "photon"
+
+print(source)
+
+# ------------------- Materials -------------------
+titanium = openmc.Material(name="Titanium Capsule") # Set material name
+titanium.add_element("Ti", 1.0) # set element 
+titanium.set_density("g/cm3", 4.5) # set density and density units
+
+argon = openmc.Material(name="Argon")
+argon.add_element("Ar", 1.0)
+argon.set_density("g/cm3", 0.00178)
+
+muscle = openmc.Material(name="Muscle")
+muscle.set_density('g/cm3', 1.040)  # density from NIST table
+
+muscle.add_element('H', 0.100637, "wo")
+muscle.add_element('C', 0.107830, "wo")
+muscle.add_element('N', 0.027680, "wo")
+muscle.add_element('O', 0.754773, "wo")
+muscle.add_element('Na', 0.000750,"wo")
+muscle.add_element('Mg', 0.000190, "wo")
+muscle.add_element('P', 0.001800, "wo")
+muscle.add_element('S', 0.002410, "wo")
+muscle.add_element('Cl', 0.000790, "wo")
+muscle.add_element('K', 0.003020, "wo")
+muscle.add_element('Ca', 0.000030, "wo")
+muscle.add_element('Fe', 0.000040, "wo")
+muscle.add_element('Zn', 0.000050, "wo") 
+
+materials = openmc.Materials([titanium, argon,muscle])# adds materials to useable list
+materials.cross_sections = "cross_sections/endfb71/endfb-vii.1-hdf5/cross_sections.xml" # location of cross section data
+materials.export_to_xml()
+
+# ------------------- Geometry -------------------
+# Planes for capsule
+x_min = openmc.XPlane(x0=-0.225)
+x_max = openmc.XPlane(x0=0.225)
+x_inner_min = openmc.XPlane(x0=-0.17)
+x_inner_max = openmc.XPlane(x0=0.17)
+r_outer = openmc.XCylinder(r=0.04)
+r_inner = openmc.XCylinder(r=0.0345)
+
+# Hollow titanium cylinder
+outer_tube = +x_min & -x_max & -r_outer
+inner_void = +x_inner_min & -x_inner_max & -r_inner
+capsule_region = outer_tube & ~inner_void
+
+capsule_cell = openmc.Cell(region=capsule_region)
+capsule_cell.fill = titanium
+
+# Argon inside capsule
+argon_region = inner_void
+argon_cell = openmc.Cell(region=argon_region)
+argon_cell.fill = argon
+#argon_cell.fill = None # Vacuum option
+
+
+# Tumour
+Radius_Tumour = 0.75 # Tumour size
+Position_in_yaxis_Tumour = 0.513 # Tumour location
+Position_in_xaxis_Tumour = 1.41 # Tumour location
+Tumour_surface = openmc.Sphere(r=Radius_Tumour, x0= Position_in_xaxis_Tumour, y0=Position_in_yaxis_Tumour)
+Tumour_region = -Tumour_surface
+Tumour_cell = openmc.Cell(region=Tumour_region)
+Tumour_cell.fill = muscle
+
+# Body sphere outside
+sphere_surface = openmc.Sphere(r=10.0, boundary_type="vacuum")
+body_region = -sphere_surface & ~capsule_region & ~Tumour_region
+body_cell = openmc.Cell(region=body_region)
+body_cell.fill = muscle
+
+
+universe = openmc.Universe(cells=[capsule_cell, argon_cell, body_cell,Tumour_cell])
+geometry = openmc.Geometry(universe)
+geometry.export_to_xml()
+
+#-------------------------Settings---------------------------------------------------------------
+settings = openmc.Settings() # Settings for simulation
+settings.run_mode = 'fixed source'
+settings.batches = 200 # Number of batches
+settings.inactive = 10
+settings.particles = 50000# Number of particles per batch
+
+settings.source = source
+settings.export_to_xml()
+
+#-------------------------------------Plot-------------------------------------------------
+plot = openmc.Plot()
+plot.basis = 'xy'
+plot.origin = (0, 0, 0)
+plot.width = (20, 20) ## Geometry plot sizing
+plot.pixels = (800, 800) # resolution 
+plot.color_by = 'cell'
+plot.filename = "geometry_plot"
+
+# Create Plots collection
+plots = openmc.Plots([plot])
+plots.export_to_xml()  # writes plots.xml
+
+openmc.plot_geometry()  # this will produce geometry_plot.ppm
+
+print("Geometry plot saved as geometry_plot.ppm")
+
+# ---------------------------Tallies------------------------------------------------------
+tallies = openmc.Tallies()
+
+mesh = openmc.RegularMesh() ## PLOT SIZE
+mesh.dimension = [400, 400]
+mesh.lower_left = [-Plot_Dimension, -Plot_Dimension]
+mesh.upper_right = [Plot_Dimension, Plot_Dimension]
+
+mesh_filter = openmc.MeshFilter(mesh)
+
+tally = openmc.Tally(name="flux_and_absorption")
+tally.filters = [mesh_filter]
+tally.scores = ["absorption", "flux"]
+tally.particles = ['photon']
+
+tallies.append(tally)
+tallies.export_to_xml()
+
+# ---------------------------Tallies Material Absorption-------------------------------------------------
+
+cell_filter = openmc.CellFilter([Tumour_cell]) #Creates filter to look at 1 material
+
+tally_tumour = openmc.Tally(name="Tumour Absorption") #Name of tally
+tally_tumour.filters = [cell_filter]#Filter set to only look at Tumour
+tally_tumour.scores = ["absorption"]#what type
+tally_tumour.particles = ["photon"]#what particle
+
+tallies.append(tally_tumour)
+tallies.export_to_xml()
+
+
+### ----------------------Run OpenMC---------------------------------------------------------
+subprocess.run(["openmc"], check=True)
+##-----------------------2D Plots-----------------------------------------------------------
+
+
+sp = openmc.StatePoint('statepoint.200.h5')#file name
+tally = sp.get_tally(name="flux_and_absorption")#what to find
+
+mean = tally.get_values(scores=['absorption']).reshape(mesh.dimension)
+plt.imshow(mean, origin='lower', extent=[-Plot_Dimension, Plot_Dimension, -Plot_Dimension, Plot_Dimension],
+           norm=LogNorm(vmin=1e-6, vmax=mean.max()))#Log Plot Version
+#plt.imshow(mean, origin='lower', extent=[-10, 10, -10, 10])#Linear Plot
+plt.title("Absorption per source particle per mesh voxel")
+plt.xlabel("x [cm]")
+plt.ylabel("y [cm]")
+plt.colorbar(label="Absorption rate")
+plt.tight_layout()
+plt.savefig("absorption_plot.png", dpi=300)
+plt.close()
+print("Saved absorption plot as absorption_plot.png")
+#---------------------------Function for conversion of absorption data-------------------------------------------------
+
+def Conversion_Absorption(absorption_value):
+    Activity_Bq= Activity *3.7e7#Converts mCi into Bq
+    Material_Absorption_persec = absorption_value * Activity_Bq * Emissions_per_decay #Number of photons hitting point per second
+    average_energy = sum(E * w for E, w in zip(energies, intensities)) # Average Energy of absorbed
+    Energy_absorbed_persec = Material_Absorption_persec * average_energy #eV/s
+    Energy_Joules_perhour = Energy_absorbed_persec*1.6e-19 *3600 # Convert to Joules/h
+
+    
+    Volume_Tumour = (4/3) * 3.14159 * Radius_Tumour**3#cm^3
+    Density_Tumour = 1.040 #g/cm
+    Mass_of_tumour = Volume_Tumour*Density_Tumour/1000#Kilograms
+    cGray_absorption_perhour = 100*(Energy_Joules_perhour/Mass_of_tumour)#cGy/h
+
+    Air_Kerma_Strength=Air_Kerma_rate * Activity
+
+    cGray_perhour_perU = cGray_absorption_perhour/Air_Kerma_Strength#cGy/h/U
+    
+    return cGray_perhour_perU
+
+
+# ---------------------------Tumour Absorption Data-------------------------------------------------
+
+sp = openmc.StatePoint('statepoint.200.h5')
+tally_tumour = sp.get_tally(name="Tumour Absorption")
+
+# Get the mean absorption value
+absorption_value = tally_tumour.mean.flatten()[0]
+
+Energy_absorbed_persec = Conversion_Absorption(absorption_value)
+
+r=np.sqrt(Position_in_yaxis_Tumour**2+Position_in_xaxis_Tumour**2)
+
+print(f"Absorption in the tumour (Energy (eV) per second): {Energy_absorbed_persec}cGy/h/U")
+print(f"With a midpoint {r} cm away from centre")
+
+
+    
