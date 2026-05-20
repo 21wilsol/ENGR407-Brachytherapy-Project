@@ -1,4 +1,5 @@
-Alex to include how to set up monte carlo stuff to get the sims running
+Radiation Code set-ups
+
 
 To set-up the non - Monte Carlo based code a series of libaries are required, all of which are denoted at the top of the scripts during the "import" sections, these were installed via PIP, however any other install method should be acceptable.
 
@@ -10,4 +11,4 @@ To set-up the Monte Carlo based simualtions a series of steps has to be taken:
 
 -Thirdly, the correct version of python has to be installed as Docker and OpenMC use different versions. This project used Python 3.10 with all imports being for that version also
 
--Finally to run the code, it has to be run through the cmd window by accessing docker 
+-Finally to run the code, it has to be run through the cmd window by accessing docker, the run commands i used are in the start of the file and are "cd (file folder location)" then "python (file name)"
