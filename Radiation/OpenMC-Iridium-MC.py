@@ -10,7 +10,8 @@ from matplotlib.colors import LogNorm
 
 
 ## Run Command - cd C:\openmc-uni
-## Run Command - python OpenMC-Iridium-Shielding.py
+## Run Command - python OpenMC-Iridium-MC.py
+## Above should be file name
 Plot_Dimension = 500
 SeedLocation_x = 0
 SeedLocation_y = 5
