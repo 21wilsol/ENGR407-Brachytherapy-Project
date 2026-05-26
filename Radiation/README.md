@@ -12,3 +12,5 @@ To set-up the Monte Carlo based simualtions a series of steps has to be taken:
 -Thirdly, the correct version of python has to be installed as Docker and OpenMC use different versions. This project used Python 3.10 with all imports being for that version also
 
 -Finally to run the code, it has to be run through the cmd window by accessing docker, the run commands i used are in the start of the file and are "cd (file folder location)" then "python (file name)"
+
+Some code requries extra excel files which need to be downloaded and correctly sourced in code.
