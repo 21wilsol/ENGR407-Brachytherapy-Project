@@ -13,7 +13,8 @@ Once the .yaml file has been created (only one file per type of camera) the othe
 
 dualcamposedetect is the code to run dual camera pose detection. This code has some issues with GStreamer and does not function properly currently however the other sections of the code have been tested individually. Ensure that the input parameters to the GStreamer function match the used cameras or it may not function properly. 
 
-Finally, Pose estimate w arduino jetson is the code that integrates the arduino communication
+Finally, Pose estimate w arduino jetson is the code that integrates the arduino communication. This is done through serial so ensure that the baud rates used match along with ensuring any other common serial issues are not present. The arduino input function can be edited to change what is taken from the serial line, ensuring that the regex statement used is compatable.
+
 
 Libraries required:
 
