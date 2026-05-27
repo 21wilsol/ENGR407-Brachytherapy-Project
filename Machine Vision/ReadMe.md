@@ -30,4 +30,10 @@ charset_normalizer,
 re,
 serial
 
+Or run this command with pip: 
+pip install numpy opencv-python glob2 matplotlib scipy charset-normalizer pyserial ensuring to remove opencv if running on the jetson.
+
+Ideally do this in a virtual environment.
+
+
 DO NOT INSTALL OPENCV onto the Jetson device, it is already installed and reinstalling will interfere with some Jetson specific configurations that will cause GStreamer to malfunction.
