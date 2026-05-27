@@ -1,6 +1,7 @@
 // Last edit: 19/05/26
 // ENGR407 DESIGN OF A ROBOTIC SYSTEM FOR BRACHYTHERAPY
 // MASTER CODE FOR COMBINING ALL SENSOR DATA RETRIEVAL, SAFETY PROTOCOLS AND MOTOR CONTROL 
+// Author: Laura Wilson
 
 #include <Arduino.h>
 #include <HX711.h> 
@@ -33,11 +34,18 @@ const int spareLED = 15;
 /************************ GLOBAL VARIABLES *************************************************/
 float INSERTION_DEPTH;
 
-// MOTOR PARAMETERS
+// MOTOR & FORCE PARAMETERS
 const int STEPS_PER_REV = 400; // 1/4 Microstepping
 const float mm_per_step = 3.75 / STEPS_PER_REV;
-const float max_velocity = 28; // mm/s
-//const float accel = 0; // mm/s^2
+
+const float NORMAL_MAX_VELOCITY = 50;         // mm/s
+const float REDUCED_MAX_VELOCITY = 5;         // mm/s (Speed after force warning)
+const float MAX_FORCE_LIMIT = 8.9;            // N 
+const unsigned long FORCE_CHECK_DELAY = 1000; // ms (Time to wait after slowing down before motor deactivation)
+
+float current_max_velocity = NORMAL_MAX_VELOCITY;
+bool velocity_reduced = false;
+unsigned long force_reduction_time = 0;
 
 // PROFILE VARIABLES
 float target_depth = 0;
@@ -54,7 +62,6 @@ long total_steps = 0;
 long steps_taken = 0;
 float remaining_steps = 0;
 
-// Volatile flag for the interrupt routine
 volatile bool emergencyStopFlag = false;
 
 // Motion states
@@ -66,11 +73,9 @@ enum InputState {askDepth, waitDepth, askConfirm, waitConfirm};
 InputState inputState = askDepth;
 bool procedureActive = false;
 
-// HX711 CALIBRATION
+// HX711 calibration
 const int calibration1 = 200;
 const int calibration2 = 200;
-
-/************************ OBJECTS *********************************************************/
 HX711 loadCell1;
 HX711 loadCell2;
 
@@ -97,25 +102,25 @@ float readInsertionForce()
   // Read calibrated force values and calculate average in N
   float load1 = loadCell1.get_units(); 
   float load2 = loadCell2.get_units(); 
-  float loadAverage = (fabs(load1 + fabs(load2)) / 2*0.00981);
+  float loadAverage = fabs((fabs(load1 + fabs(load2)) / 2*0.00981)-20.928);
   return loadAverage; 
 }
 
-/************************ STEPPER MOTOR MOVE *********************************************/
+/************************ STEPPER MOTOR  *************************************************/
 void stepMotor()
 {
   digitalWrite(stepPin, HIGH);
-  delayMicroseconds(5); 
+  delayMicroseconds(20); // was 5
   digitalWrite(stepPin, LOW);
 }
 
-/************************ INTERRUPT SERVICE ROUTINE **************************************/
+/************************ INTERRUPT *****************************************************/
 void triggerEmergencyStop() 
 {
   emergencyStopFlag = true;
 }
 
-/************************ INSERTION DEPTH INPUT FUNCTION *********************************/
+/************************ INSERTION DEPTH MANUAL INPUT **********************************/
 void getNewTargetDepth() 
 {
   inputState = askDepth;
@@ -144,7 +149,7 @@ void getNewTargetDepth()
 
       case askConfirm:
         Serial.println("Do you want to continue (yes/no)?");
-        inputState = waitConfirm;
+        inputState = waitConfirm; // Manually type in yes/no for confirmation in serial monitor
       break;
 
       case waitConfirm:
@@ -175,13 +180,16 @@ void getNewTargetDepth()
     }
   }
 
-  // Reset variables for the new run
-  Serial.println("time_ms,velocity_mms,position_mm,depth_mm,force_N"); 
+  Serial.println("time_ms,velocity_mms,position_mm,depth_mm,force_N"); // CSV output titles
 
   total_steps = target_depth / mm_per_step;
   steps_taken = 0;
   velocity = 0;
-  
+    
+  // Reset variables for new procedure
+  current_max_velocity = NORMAL_MAX_VELOCITY;
+  velocity_reduced = false;
+
   // Reset emergency flags if carried from a previous state
   emergencyStopFlag = false;
   digitalWrite(interruptLED, LOW);
@@ -200,6 +208,13 @@ void setup()
 {
   Serial.begin(115200); 
 
+  // Setup load cells
+  loadCell1.begin(DT1, loadSCK1);
+  loadCell2.begin(DT2, loadSCK2);
+  loadCell1.set_scale(calibration1);
+  loadCell2.set_scale(calibration2);
+  loadCell1.tare(); 
+
   // Setup motor
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
@@ -208,7 +223,7 @@ void setup()
   digitalWrite(enablePin, LOW); 
   digitalWrite(motorLED, HIGH); 
   pinMode(microStepPin, OUTPUT);
-  digitalWrite(microStepPin, HIGH);
+  digitalWrite(microStepPin, HIGH); 
 
   // Setup LED Pins
   pinMode(loadLED, OUTPUT);
@@ -219,8 +234,7 @@ void setup()
   
   // Setup Interrupt Pin
   pinMode(interruptLED, OUTPUT);
-  // INPUT_PULLUP prevents floating states
-  pinMode(interruptPin, INPUT_PULLUP); 
+  pinMode(interruptPin, INPUT_PULLUP); // Prevents floating states
   // Triggers when the button is pressed (voltage goes from HIGH to LOW)
   attachInterrupt(digitalPinToInterrupt(interruptPin), triggerEmergencyStop, FALLING); 
 
@@ -230,19 +244,19 @@ void setup()
 /******************************** LOOP ****************************************************/
 void loop()
 {
-  // Calculate dt continuously 
+  // Calculate and update dt 
   unsigned long now = micros();
   dt = (now - last_update_time) / 1000000.0;
   last_update_time = now;
 
-  // Live sensor readings
+  // Read sensors
   float DEPTH = readInsertionDepth();
   float FORCE = readInsertionForce();
 
   float remaining_mm = 0;
-  float accel = (max_velocity*max_velocity) / (0.5*target_depth); // Acceleration profile
+  float accel = (NORMAL_MAX_VELOCITY * NORMAL_MAX_VELOCITY) / (0.5 * target_depth); 
 
-  // Check if interrupt is pressed
+  // Check if interrupt is pressed 
   if (emergencyStopFlag && motionState != EMERGENCY_STOP) 
   {
       motionState = EMERGENCY_STOP;
@@ -250,14 +264,43 @@ void loop()
       digitalWrite(enablePin, HIGH);  // Motor disabled
       digitalWrite(interruptLED, HIGH); 
       Serial.println("\n--- EMERGENCY STOP TRIGGERED ---");
-      Serial.println("Motor disabled. Sensors remain active. Type 'reset' to abort procedure.");
+      Serial.println("Motor disabled. Type 'reset' to abort procedure.");
+  }
+
+  // FORCE LIMIT SAFETY PROTOCOL
+  if (procedureActive && (motionState == INSERT_ACCEL || motionState == INSERT_CRUISE)) 
+  {
+      if (FORCE >= MAX_FORCE_LIMIT) 
+      {
+          if (!velocity_reduced) 
+          {
+              current_max_velocity = REDUCED_MAX_VELOCITY; // Reduce velocity
+              velocity_reduced = true;
+              force_reduction_time = millis();
+              
+              //Serial.println("\nWARNING: MAX LIMIT"); 
+              //Serial.println("Reducing max velocity");
+              
+              if (velocity > current_max_velocity) 
+              {
+                  velocity = current_max_velocity;
+                  //motionState = INSERT_CRUISE; // Force into cruise to prevent further acceleration
+              }
+          } 
+          else if (millis() - force_reduction_time > FORCE_CHECK_DELAY) 
+          {
+              // Deactivate motor if force does not reduce
+              Serial.println("\n FORCE REMAINS HIGH AFTER VELOCITY REDUCTION");
+              triggerEmergencyStop(); 
+          }
+      }
   }
 
   // KINEMATIC CALCULATIONS
   switch (motionState)
   {
     case EMERGENCY_STOP:
-      // Motor is disabled and velocity is 0. Steps taken is frozen.
+      // Motor is disabled and velocity is 0
       // State can only be reset manually via serial monitor input
       if (Serial.available() > 0)
       {
@@ -281,9 +324,9 @@ void loop()
 
       velocity += accel * dt;
 
-      if (velocity >= max_velocity)
+      if (velocity >= current_max_velocity)
       {
-        velocity = max_velocity;
+        velocity = current_max_velocity;
         motionState = INSERT_CRUISE;
       }
       if (remaining_mm <= (velocity * velocity) / (2 * accel))
@@ -293,6 +336,7 @@ void loop()
       break;
 
     case INSERT_CRUISE: // Constant velocity cruise state (insertion)
+      digitalWrite(dirPin, HIGH); 
       remaining_steps = total_steps - steps_taken;
       remaining_mm = remaining_steps * mm_per_step;
 
@@ -317,7 +361,7 @@ void loop()
       }
       break;
 
-    case WAIT_CONFIRM: // Manual input typed "retract" needed
+    case WAIT_CONFIRM: // Manual input typed 'retract' needed
       if (Serial.available() > 0)
       {
         String response = Serial.readStringUntil('\n');
@@ -336,6 +380,7 @@ void loop()
           motionState = STOP;
         }
         while (Serial.available() > 0) Serial.read(); 
+      }
       break;
     
     case RETRACT_ACCEL: // Acceleration profile state (retraction)
@@ -345,9 +390,10 @@ void loop()
 
       velocity -= accel * dt; // Negative velocity for retraction
 
-      if (velocity <= -max_velocity)
+      // NORMAL max velocity for efficiency
+      if (velocity <= -NORMAL_MAX_VELOCITY)
       {
-        velocity = -max_velocity;
+        velocity = -NORMAL_MAX_VELOCITY;
         motionState = RETRACT_CRUISE;
       }
 
