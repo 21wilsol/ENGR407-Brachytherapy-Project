@@ -18,14 +18,16 @@ Finally, Pose estimate w arduino jetson is the code that integrates the arduino 
 Do note that the Jetson is quite tempermental and not all issues with the code will be repeatable or present at the time of writing.
 Libraries required:
 
-Numpy
-OpenCV2
-glob
-matplotlib
-scipy
-math
-time
-threading
-charset_normalizer
+Numpy,
+OpenCV2,
+glob,
+matplotlib,
+scipy,
+math,
+time,
+threading,
+charset_normalizer,
+re,
+serial
 
 DO NOT INSTALL OPENCV onto the Jetson device, it is already installed and reinstalling will interfere with some Jetson specific configurations that will cause GStreamer to malfunction.
