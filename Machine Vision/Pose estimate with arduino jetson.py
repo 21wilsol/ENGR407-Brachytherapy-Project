@@ -1,5 +1,7 @@
 
-from __future__ import print_function # Python 2/3 compatibility
+#This code is for multiple cameras attatched to the jetson, ensure GStreamer inputs match the camera properties
+#and serial properties match those defined in the arduino code.
+#Output is the coords.txt file
 import cv2 # Import the OpenCV library
 import numpy as np # Import Numpy library
 from scipy.spatial.transform import Rotation as R
