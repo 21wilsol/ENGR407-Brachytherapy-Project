@@ -1,4 +1,4 @@
-#Adapted from https://automaticaddison.com/how-to-perform-pose-estimation-using-an-aruco-marker/  I updated to update this to opencv 4.13 along with adding save feature and adapting for use case (changing out dictionary function plus changing outputs)
+
 from __future__ import print_function # Python 2/3 compatibility
 import cv2 # Import the OpenCV library
 import numpy as np # Import Numpy library
@@ -13,6 +13,71 @@ camera_calibration_parameters_filename = 'calibration_chessboard.yaml'
 #set up arduino
 
 coords =[0,0,0,0]
+
+#gstreamer def
+def gstreamer_pipeline(
+    sensor_id=0,
+    capture_width=1920,
+    capture_height=1080,
+    display_width=960,
+    display_height=540,
+    framerate=30,
+    flip_method=0,
+):
+    """
+gstreamer function to sort out gstreamer pipeline, source: https://github.com/JetsonHacksNano/CSI-Camera/blob/master/simple_camera.py
+    """
+    return (
+        "nvarguscamerasrc sensor-id=%d ! "
+        "video/x-raw(memory:NVMM), width=(int)%d, height=(int)%d, framerate=(fraction)%d/1 ! "
+        "nvvidconv flip-method=%d ! "
+        "video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx ! "
+        "videoconvert ! "
+        "video/x-raw, format=(string)BGR ! appsink"
+        % (
+            sensor_id,
+            capture_width,
+            capture_height,
+            framerate,
+            flip_method,
+            display_width,
+            display_height,
+        )
+    )
+
+
+
+def estimatePoseSingleMarker(corners, marker_length, camera_matrix, dist_coeffs):
+    """
+Replaces opencv contribs estimatepose single marker due to that modules conflict with jetson. Outputs are slightly different(1x3 not 3x1 and not np arrays)
+    """
+
+    # Create the matrix of marker points to map the measured corners to
+    objp = np.array([
+        [-marker_length/2,  marker_length/2, 0],
+        [ marker_length/2,  marker_length/2, 0],
+        [ marker_length/2, -marker_length/2, 0],
+        [-marker_length/2, -marker_length/2, 0]
+    ], dtype=np.float32)
+   
+
+    
+    imgp = corners[0].reshape((4, 2)).astype(np.float32)
+
+    success, rvecs, tvecs = cv2.solvePnP(
+        objp,
+        imgp,
+        camera_matrix,
+        dist_coeffs,
+        flags=cv2.SOLVEPNP_IPPE_SQUARE
+    )
+    # Raise exception if the solvepnp fails
+    if not success:
+        raise RuntimeError("solvePnP failed for marker")
+
+       
+
+    return rvecs, tvecs
 
 
  
@@ -54,14 +119,14 @@ def main():
   cv_file.release()
      
   # Only checks one dictionary, wont be an issue for assumed use case
-  
   this_aruco_dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
   this_aruco_parameters = cv2.aruco.DetectorParameters()
   #instantiate detector object, uses set dictionary and parameters as default, we adjust for the provided camera properties later in the code
   detector= cv2.aruco.ArucoDetector(this_aruco_dictionary,this_aruco_parameters)
    
-  #Take in video feed, 0 is external webcam for some reason
-  cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+  #Take in video feed, 0 is systsem default camera, use top for csi and bot for webcam
+  #video_capture = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
+  cap = cv2.VideoCapture(0)
    
   while(True): #loops for each frame
   
@@ -85,7 +150,7 @@ def main():
       cv2.aruco.drawDetectedMarkers(frame, corners, marker_ids,borderColor=(0,0,255))
        
       # Get the rotation and translation vectors
-      rvecs, tvecs, obj_points = cv2.aruco.estimatePoseSingleMarkers(
+      rvecs, tvecs = estimatePoseSingleMarker(
         corners,
         aruco_marker_side_length,
         mtx,
@@ -101,13 +166,14 @@ def main():
       for i, marker_id in enumerate(marker_ids):
        
         # Store the translation (i.e. position) information
-        transform_translation_x = tvecs[i][0][0]
-        transform_translation_y = tvecs[i][0][1]
-        transform_translation_z = tvecs[i][0][2]
+        transform_translation_x = tvecs[0][0]
+        transform_translation_y = tvecs[1][0]
+        transform_translation_z = tvecs[2][0]
  
         # Store the rotation information
         rotation_matrix = np.eye(4)
-        rotation_matrix[0:3, 0:3] = cv2.Rodrigues(np.array(rvecs[i][0]))[0]
+        permarkerrvecs = np.array([rvecs[0][0],rvecs[1][0],rvecs[2][0]])
+        rotation_matrix[0:3, 0:3] = cv2.Rodrigues(permarkerrvecs)[0]
         r = R.from_matrix(rotation_matrix[0:3, 0:3])
         quat = r.as_quat()   
          
@@ -127,12 +193,14 @@ def main():
         pitch_y = math.degrees(pitch_y)
         yaw_z = math.degrees(yaw_z)
         roll_x = 180 -roll_x
+        #print out to the terminal
+        #roll is technically backwards but fixing properly would not be worth the effort
         #generate coords
         coords = np.array([roll_x,pitch_y,yaw_z])
       
          
         # Draw the axes on the marker
-        cv2.drawFrameAxes(frame, mtx, dst, rvecs[i], tvecs[i], length=0.05,thickness=2)
+        cv2.drawFrameAxes(frame, mtx, dst, np.array(rvecs), np.array(tvecs), length=0.1,thickness=2)
         #save the detected marker as a picture for debugging purposes
         # cv2.imwrite('detectmarker.png',frame)
      
@@ -141,8 +209,6 @@ def main():
     #debug wait statement to make terminal data easier to read
     #time.sleep(0.5)
     
-    
-          
     # press q to exit capture loop
     if cv2.waitKey(1) & 0xFF == ord('q'):
       break
@@ -153,8 +219,7 @@ def main():
       cv2.imwrite('saved marker.png',frame)
       #this will only save one set of coords, which is not an issue for use case so has not been altered
       np.savetxt("marker coords.txt",coords, delimiter=',',fmt='%.3f',comments='x,y,z rotations then distance')
-      print("Image taken \n",coords)
-      print("lol")
+      print("Image taken")
 
   
   # Close down the video stream
