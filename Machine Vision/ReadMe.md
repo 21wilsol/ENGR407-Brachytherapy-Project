@@ -15,7 +15,7 @@ dualcamposedetect is the code to run dual camera pose detection. This code has s
 
 Finally, Pose estimate w arduino jetson is the code that integrates the arduino communication. This is done through serial so ensure that the baud rates used match along with ensuring any other common serial issues are not present. The arduino input function can be edited to change what is taken from the serial line, ensuring that the regex statement used is compatable.
 
-
+Do note that the Jetson is quite tempermental and not all issues with the code will be repeatable or present at the time of writing.
 Libraries required:
 
 Numpy
