@@ -87,6 +87,7 @@ def euler_from_quaternion(x, y, z, w):
   roll is rotation around x in radians (counterclockwise)
   pitch is rotation around y in radians (counterclockwise)
   yaw is rotation around z in radians (counterclockwise)
+  Sourced from https://automaticaddison.com/how-to-perform-pose-estimation-using-an-aruco-marker/ 
   """
   t0 = +2.0 * (w * x + y * z)
   t1 = +1.0 - 2.0 * (x * x + y * y)
