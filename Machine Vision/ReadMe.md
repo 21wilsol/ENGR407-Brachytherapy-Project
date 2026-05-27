@@ -31,7 +31,9 @@ re,
 serial
 
 Or run this command with pip: 
-pip install numpy opencv-python glob2 matplotlib scipy charset-normalizer pyserial ensuring to remove opencv if running on the jetson.
+pip install numpy opencv-python glob2 matplotlib scipy charset-normalizer pyserial 
+
+ensuring to remove opencv if running on the jetson.
 
 Ideally do this in a virtual environment.
 
