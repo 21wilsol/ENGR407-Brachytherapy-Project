@@ -155,14 +155,7 @@ def main():
         aruco_marker_side_length,
         mtx,
         dst)
-         
-      # Print the pose for the ArUco marker
-      # The pose of the marker is with respect to the camera lens frame.
-      # Imagine you are looking through the camera viewfinder, 
-      # the camera lens frame's:
-      # x-axis points to the right
-      # y-axis points straight down towards your toes
-      # z-axis points straight ahead away from your eye, out of the camera
+        
       for i, marker_id in enumerate(marker_ids):
        
         # Store the translation (i.e. position) information
