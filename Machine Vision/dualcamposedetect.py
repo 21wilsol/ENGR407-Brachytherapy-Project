@@ -186,11 +186,7 @@ def detectAndMarkMarkers(frame,corners,marker_ids,mtx,dst):
    rvecs, tvecs = estimatePoseSingleMarker(corners,aruco_marker_side_length,mtx,dst)
    for i, marker_id in enumerate(marker_ids):
        
-        # Store the translation (i.e. position) information for debugging purposes
-        # transform_translation_x = tvecs[i][0][0]
-        # transform_translation_y = tvecs[i][1][0]
-        # transform_translation_z = tvecs[i][2][0]
- 
+        
         # Store the rotation information
         rotation_matrix = np.eye(4)
         permarkerrvecs = np.array([rvecs[i][0][0],rvecs[i][1][0],rvecs[i][2][0]])
