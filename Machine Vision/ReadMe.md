@@ -4,7 +4,7 @@ This is the ReadMe for the Machine Vision section of the report. The three files
 
 camcalib2.py 
 Pose Est Basic.py
-Pose Estimate w arduino.py
+Pose Estimate with arduino.py
 dualcamposedetect.py
 
 The three pose detection codes require a camera calibration matrix to accurately identify angles. This is referred to as matrix K in the report. The code used here is copied from https://automaticaddison.com/how-to-perform-pose-estimation-using-an-aruco-marker/. This calibration is done using a chessboard style grid of squares and inputting at least 10 images of varied pose and distance. Ensure that the variables declared at the start match the properties of the chessboard.
