@@ -7,11 +7,9 @@ import math # Math library
 import serial #arduino serial library
 import re
 import time
-# define the aruco marker size and where the yaml file is
-# change for the predefined aruc size
+
 aruco_marker_side_length = 0.055
-# Calibration parameters yaml file
-# we use yaml because opencv supports this natively without using any other libraries like json
+
 camera_calibration_parameters_filename = 'picamcalibration.yaml'
 global coords
 # declare coords as empty to ensure if we take a screenshot without ever detecting an arduino it doesnt crash
@@ -186,13 +184,6 @@ def main():
         mtx,
         dst)
          
-      # Print the pose for the ArUco marker
-      # The pose of the marker is with respect to the camera lens frame.
-      # Imagine you are looking through the camera viewfinder, 
-      # the camera lens frame's:
-      # x-axis points to the right
-      # y-axis points straight down towards your toes
-      # z-axis points straight ahead away from your eye, out of the camera
       for i, marker_id in enumerate(marker_ids):
        
         # Store the translation (i.e. position) information
@@ -235,7 +226,6 @@ def main():
     
           
     # press q to exit capture loop
-    #could add a proper interrupt here but not worth time
     if cv2.waitKey(1) & 0xFF == ord('q'):
       break
     elif cv2.waitKey(1) & 0xFF == ord('f'):
@@ -244,7 +234,7 @@ def main():
     elif cv2.waitKey(1) & 0xFF == ord('c'):
       #press c to save coords and screenshot to file using numpy
       cv2.imwrite('saved marker.png',frame)
-      #this will only save one set of coords, which is not an issue for use case so has not been altered, lines beginning with # are 1st and last, distance of 0 means null coords
+      #this will only save one set of coords, which is not an issue for use case so has not been altered
       np.savetxt("marker coords.txt",coords, delimiter=',',fmt='%.3f',comments='#',header='x,y,z,distance',footer='end')
       print("Image taken")
     
