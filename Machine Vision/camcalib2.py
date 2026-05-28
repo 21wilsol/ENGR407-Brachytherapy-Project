@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#Copied from https://automaticaddison.com/how-to-perform-pose-estimation-using-an-aruco-marker/
+#Sourced from https://automaticaddison.com/how-to-perform-pose-estimation-using-an-aruco-marker/
 '''
 Welcome to the Camera Calibration Program!
   
