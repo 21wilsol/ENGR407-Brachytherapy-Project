@@ -38,4 +38,4 @@ ensuring to remove opencv if running on the jetson.
 Ideally do this in a virtual environment.
 
 
-DO NOT INSTALL OPENCV onto the Jetson device, it is already installed and reinstalling will interfere with some Jetson specific configurations that will cause GStreamer to malfunction.
+DO NOT INSTALL OPENCV onto the Jetson device, it is already installed and reinstalling will interfere with some Jetson specific configurations that will cause GStreamer to malfunction. Additionally, a virtual environment should be used to avoid any library conflicts with those pre-installed onto the device.
