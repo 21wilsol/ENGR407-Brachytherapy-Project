@@ -1,0 +1,233 @@
+target = 5;
+skin_stiffness_values = [10, 50, 100]; % Test soft, medium, and hard skin
+tolerance_band = 0.05;
+% arrays to store results
+overshoot_results = zeros(1, length(skin_stiffness_values));
+error_results = zeros(1, length(skin_stiffness_values));
+settling_time_results = zeros(1, length(skin_stiffness_values));
+transient_settling_results = zeros(1, length(skin_stiffness_values));
+% --- RUN SIMULATIONS FOR ALL STIFFNESS VALUES ---
+for i = 1:length(skin_stiffness_values)
+    k = skin_stiffness_values(i);
+    
+    % 1. Update the stiffness in the Simulink model
+    assignin('base', 'Stiffness_K', k);
+    
+    % 2. Run the simulation
+    simOut = sim('OptimisedModel');
+    
+    % 3. Extract the data
+    actual_pos = simOut.sim_position;
+    t = simOut.sim_time;
+    % actual_pos_full = simOut.sim_position;
+    % t_full = simOut.sim_time;
+    % 4. Filter data to start from t=1
+    % start_idx = find(t_full >= 1, 1, 'first');  % Find first index where t >= 1
+    % t = t_full(start_idx:end);
+    % actual_pos = actual_pos_full(start_idx:end);
+    % Store data for plotting based on stiffness value
+    if k == 10
+        t_soft = t;
+        pos_soft = actual_pos;
+        % Extract the exact time step size used by the solver
+        dt = t(2) - t(1);
+        % Calculate acceleration for soft skin
+        vel_soft = gradient(actual_pos, dt);
+        acc_soft = gradient(vel_soft, dt);
+        % Calculate settling time for SOFT skin
+        outside_zone = find(abs(actual_pos - target) > tolerance_band);
+        if isempty(outside_zone)
+            settling_time_results(i) = 0;
+        else
+            last_outside_index = outside_zone(end);
+            if last_outside_index + 1 <= length(t)
+                settling_time_results(i) = t(last_outside_index + 1);
+            else
+                settling_time_results(i) = t(end);
+            end
+        end
+        % Calculate transient settling time
+        transient_ts = settling_time_results(i) - 3.5;
+        if transient_ts < 0
+            transient_ts = 0;
+        end
+        transient_settling_results(i) = transient_ts;
+    elseif k == 50
+        t_med = t;
+        pos_med = actual_pos;
+        % Extraction of the exact time step size used by the solver
+        dt = t(2) - t(1);
+        % Calculate acceleration for medium skin
+        vel_med = gradient(actual_pos, dt);
+        acc_med = gradient(vel_med, dt);
+        % Calculate settling time for MEDIUM skin
+        outside_zone = find(abs(actual_pos - target) > tolerance_band);
+        if isempty(outside_zone)
+            settling_time_results(i) = 0;
+        else
+            last_outside_index = outside_zone(end);
+            if last_outside_index + 1 <= length(t)
+                settling_time_results(i) = t(last_outside_index + 1);
+            else
+                settling_time_results(i) = t(end);
+            end
+        end
+        % Calculate transient settling time (relative to 3.5s ramp completion)
+        transient_ts = settling_time_results(i) - 3.5;
+        if transient_ts < 0
+            transient_ts = 0;
+        end
+        transient_settling_results(i) = transient_ts;
+    elseif k == 100
+        t_hard = t;
+        pos_hard = actual_pos;
+        % Extract the exact time step size used by the solver
+        dt = t(2) - t(1);
+        % Calculate acceleration for hard skin
+        vel_hard = gradient(actual_pos, dt);
+        acc_hard = gradient(vel_hard, dt);
+         % Calculate settling time for HARD skin
+        outside_zone = find(abs(actual_pos - target) > tolerance_band);
+        if isempty(outside_zone)
+            settling_time_results(i) = 0;
+        else
+            last_outside_index = outside_zone(end);
+            if last_outside_index + 1 <= length(t)
+                settling_time_results(i) = t(last_outside_index + 1);
+            else
+                settling_time_results(i) = t(end);
+            end
+        end
+        
+        % Calculate transient settling time (relative to 3.5s ramp completion)
+        transient_ts = settling_time_results(i) - 3.5;
+        if transient_ts < 0
+            transient_ts = 0;
+        end
+        transient_settling_results(i) = transient_ts;
+    end
+    
+    % 5. Calculate Success Metrics
+    % Find the maximum position reached
+    peak_position = min(actual_pos);
+    % Calculate overshoot (only if it goes above target)
+    if target > peak_position
+     overshoot = 0;
+    else
+    overshoot = target-peak_position;
+    end
+    
+    % Calculate error
+    final_error = abs(target - actual_pos(end));
+    
+    % Store results
+    overshoot_results(i) = overshoot;
+    error_results(i) = final_error;
+    
+    % 5. Print results
+    fprintf('Stiffness: %d | Overshoot: %.4f mm | Error: %.4f mm | Min Position: %.4f mm | Settling Time: %.4f s | Transient: %.4f s\n', k, overshoot, final_error, min(actual_pos), settling_time_results(i), transient_settling_results(i));
+end
+% figure creation after all simulations are complete
+% Graph 1: Position vs Time
+figure('Name', 'Needle Position Over Time');
+hold on;
+plot(t_soft, pos_soft, 'r', 'LineWidth', 1.5);
+plot(t_med, pos_med, 'g', 'LineWidth', 1.5);
+plot(t_hard, pos_hard, 'b', 'LineWidth', 1.5);
+yline(5, '--k', 'Target (5mm)'); % dashed = target depth
+xlabel('Time (seconds)');
+ylabel('Position (mm)');
+title('Needle Position Over Time');
+legend('Soft Skin (10 N/m)', 'Medium Skin (50 N/m)', 'Hard Skin (100 N/m)');
+grid on;
+% Graph 2: Velocity vs Time
+figure('Name', 'Needle Velocity');
+hold on;
+plot(t_soft, gradient(pos_soft, t_soft), 'r');  % Using gradient for better derivative
+plot(t_med, gradient(pos_med, t_med), 'g');
+plot(t_hard, gradient(pos_hard, t_hard), 'b');
+xlabel('Time (seconds)');
+ylabel('Velocity (mm/s)');
+title('Needle Velocity');
+legend('Soft Skin (10 N/m)', 'Medium Skin (50 N/m)', 'Hard Skin (100 N/m)');
+grid on;
+% Graph 3: Error vs Time
+figure('Name', 'Control Error (Target - Actual)');
+hold on;
+plot(t_soft, abs(target - pos_soft), 'r');
+plot(t_med, abs(target - pos_med), 'g');
+plot(t_hard, abs(target - pos_hard), 'b');
+xlabel('Time (seconds)');
+ylabel('Error (mm)');
+title('Control Error (Target - Actual)');
+legend('Soft Skin (10 N/m)', 'Medium Skin (50 N/m)', 'Hard Skin (100 N/m)');
+grid on;
+ 
+% Graph 4: Acceleration/S-Curve Plot
+figure('Name', 'Needle Acceleration Profile');
+hold on;
+plot(t_soft, acc_soft, 'r', 'LineWidth', 1.5);
+plot(t_med, acc_med, 'g', 'LineWidth', 1.5);
+plot(t_hard, acc_hard, 'b', 'LineWidth', 1.5);
+xlabel('Time (seconds)');
+ylabel('Acceleration (mm/s²)');
+title('Needle Acceleration Profile (Smoothness of Motion)');
+legend('Soft Skin (10 N/m)', 'Medium Skin (50 N/m)', 'Hard Skin (100 N/m)');
+grid on;
+hline = refline(0, 0)
+hline.Color = 'k';
+hline.LineStyle = '--';
+% Combined Velocity and Acceleration for comparison ---
+figure('Name', 'Velocity vs Acceleration Comparison (Medium Stiffness)');
+subplot(2,1,1);
+plot(t_med, pos_med, 'b-', 'LineWidth', 2);
+ylabel('Position (mm)');
+title('Needle Position (Medium Skin)');
+grid on;
+subplot(2,1,2);
+plot(t_med, vel_med, 'g-', 'LineWidth', 2);
+hold on;
+ylabel('Velocity (mm/s)');
+xlabel('Time (seconds)');
+title('Velocity');
+legend('Velocity', 'Location', 'best');
+grid on;
+figure('Name', 'Needle Position Over Time & Needle Velocity');
+% Graph 1: Position vs Time
+subplot(2,1,1);
+hold on;
+plot(t_soft, pos_soft, 'r', 'LineWidth', 1.5);
+plot(t_med, pos_med, 'g', 'LineWidth', 1.5);
+plot(t_hard, pos_hard, 'b', 'LineWidth', 1.5);
+yline(5, '--k', 'Target (5mm)'); % dashed line to show the target depth
+xlabel('Time (seconds)');
+ylabel('Position (mm)');
+title('Needle Position Over Time');
+legend('Soft Skin (10 N/m)', 'Medium Skin (50 N/m)', 'Hard Skin (100 N/m)');
+grid on;
+% Graph 2: Velocity vs Time
+subplot(2,1,2);
+hold on;
+plot(t_soft, gradient(pos_soft, t_soft), 'r');  % Using gradient for better derivative
+plot(t_med, gradient(pos_med, t_med), 'g');
+plot(t_hard, gradient(pos_hard, t_hard), 'b');
+xlabel('Time (seconds)');
+ylabel('Velocity (mm/s)');
+title('Needle Velocity (Smoothness Check)');
+legend('Soft Skin (10 N/m)', 'Medium Skin (50 N/m)', 'Hard Skin (100 N/m)');
+grid on;
+% Summary figure showing metrics
+figure('Name', 'Performance Metrics Summary');
+subplot(2,1,1);
+bar(skin_stiffness_values, overshoot_results);
+xlabel('Stiffness (N/mm)');
+ylabel('Overshoot (mm)');
+title('Overshoot vs Skin Stiffness');
+grid on;
+subplot(2,1,2);
+bar(skin_stiffness_values, error_results);
+xlabel('Stiffness (N/mm)');
+ylabel('Final Error (mm)');
+title('Final Error vs Skin Stiffness');
+grid on;
+ 
