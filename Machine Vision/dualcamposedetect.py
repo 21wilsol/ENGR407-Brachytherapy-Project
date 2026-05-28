@@ -1,4 +1,4 @@
-#Adapted from https://automaticaddison.com/how-to-perform-pose-estimation-using-an-aruco-marker/  Only thing still used is the euler from quat function
+
 from __future__ import print_function
 from charset_normalizer import detect
 import cv2 #Import opencv, Do not need to import through pip if using Jetpack
